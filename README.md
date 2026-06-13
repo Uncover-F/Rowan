@@ -2,4 +2,7 @@
 ***anti-scam &amp; more discord bot***
 
 > #### Commands:
-> .help
+> .help - Help Screen
+> 
+> .whitelist @username - Whitelist @username and prevent their messages from being blocked.
+> 
