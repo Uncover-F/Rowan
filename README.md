@@ -1,8 +1,16 @@
-# Rowan
-***anti-scam &amp; more discord bot***
+<h1 align="center">Rowan</h1>
 
-> #### Commands:
-> .help - Help Screen
-> 
-> .whitelist @username - Whitelist @username and prevent their messages from being blocked.
-> 
+> [!TIP]
+Commands:
+> - **.help** Get supported commands.
+> - **.whitelist** Whitelist member (second argument) from Rowan.
+
+# Getting Started
+## Quick Overview
+
+> [!NOTE]
+> This bot is currently in beta and not ready for self-deployment.
+
+- Create .env file
+- Fill in Groq & Discord API Key/Tokens
+- Run main.py
