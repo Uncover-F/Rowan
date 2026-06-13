@@ -8,6 +8,7 @@ Things you  should block:
 Things that you should not block: (Examples)
 - Guys im selling goo
 - nah
+- Genuine questions about the server, game, or topic
 - Harmless Stray URLs
 
 You will be given input, return a coherence score from 1-10 in the form {"coherence":9} (9 for example, may differ). Return JUST the final end result.
