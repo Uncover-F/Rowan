@@ -17,15 +17,10 @@ load_dotenv()
 
 # ============== LOGGING ============== #
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-    handlers=[
-        logging.StreamHandler(),
-        logging.FileHandler("bot.log", encoding="utf-8")
-    ]
-)
+logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+                    handlers=[logging.StreamHandler(), logging.FileHandler("bot.log", encoding="utf-8")])
 log = logging.getLogger("modbot")
+
 
 # ============== CONSTANTS ============== #
 
@@ -33,16 +28,10 @@ class CoherenceThreshold(Enum):
     REMOVE = 3
     INTERNAL_ERROR = 11
 
-RISK_CONFIG = {
-    "new_member_base": 10,
-    "new_account_penalty": 15,
-    "new_account_threshold_days": 14,
-    "max_risk": 100,
-    "image_check_max_risk": 50,
-    "text_coherence_penalty": 3,
-    "text_coherence_reward": -1,
-    "image_coherence_penalty": 5,
-}
+
+RISK_CONFIG = {"new_member_base": 10, "new_account_penalty": 15, "new_account_threshold_days": 14, "max_risk": 100,
+               "image_check_max_risk": 50, "text_coherence_penalty": 3, "text_coherence_reward": -2,
+               "image_coherence_penalty": 5, }
 
 DEV_MODE = True  # Set to False to disable dev commands
 DEV_IDS = {848031845454839810}  # Add your Discord user IDs here
@@ -50,6 +39,7 @@ DEV_IDS = {848031845454839810}  # Add your Discord user IDs here
 
 def is_dev(user_id: int) -> bool:
     return DEV_MODE and user_id in DEV_IDS
+
 
 # ============== DATA MODELS ============== #
 
@@ -87,16 +77,10 @@ class GroqCoherence:
 
     async def check_text(self, text: str) -> int:
         def run():
-            return self.client.chat.completions.create(
-                model="llama-3.3-70b-versatile",
-                messages=[
-                    {"role": "system", "content": self.prompt},
-                    {"role": "user", "content": text}
-                ],
-                temperature=0,
-                max_completion_tokens=256,
-                top_p=1
-            )
+            return self.client.chat.completions.create(model="llama-3.3-70b-versatile",
+                                                       messages=[{"role": "system", "content": self.prompt},
+                                                                 {"role": "user", "content": text}], temperature=0,
+                                                       max_completion_tokens=256, top_p=1)
 
         try:
             result = await asyncio.to_thread(run)
@@ -118,13 +102,9 @@ class GroqCoherence:
             else:
                 content.insert(0, {"type": "text", "text": self.prompt})
 
-            return self.client.chat.completions.create(
-                model="meta-llama/llama-4-scout-17b-16e-instruct",
-                messages=[{"role": "user", "content": content}],
-                temperature=0,
-                max_completion_tokens=256,
-                top_p=1
-            )
+            return self.client.chat.completions.create(model="meta-llama/llama-4-scout-17b-16e-instruct",
+                                                       messages=[{"role": "user", "content": content}], temperature=0,
+                                                       max_completion_tokens=256, top_p=1)
 
         try:
             result = await asyncio.to_thread(run)
@@ -173,37 +153,26 @@ class Database:
         await self.conn.commit()
 
     async def get_or_create_profile(self, user_id: int, account_created: datetime,
-                                     join_timestamp: Optional[datetime] = None) -> UserProfile:
+                                    join_timestamp: Optional[datetime] = None) -> UserProfile:
         """Get profile, or create with calculated risk (used on member join)"""
         cursor = await self.conn.execute(
-            "SELECT account_created, join_timestamp, current_risk FROM profiles WHERE user_id = ?",
-            (user_id,)
-        )
+            "SELECT account_created, join_timestamp, current_risk FROM profiles WHERE user_id = ?", (user_id,))
         row = await cursor.fetchone()
 
         if row:
-            return UserProfile(
-                user_id=user_id,
-                account_created=datetime.fromisoformat(row[0]),
-                join_timestamp=datetime.fromisoformat(row[1]) if row[1] else None,
-                current_risk=row[2]
-            )
+            return UserProfile(user_id=user_id, account_created=datetime.fromisoformat(row[0]),
+                               join_timestamp=datetime.fromisoformat(row[1]) if row[1] else None, current_risk=row[2])
 
         join_ts = join_timestamp or datetime.utcnow()
         initial_risk = self._calculate_initial_risk(account_created, join_ts)
 
         await self.conn.execute(
             "INSERT INTO profiles (user_id, account_created, join_timestamp, current_risk) VALUES (?, ?, ?, ?)",
-            (user_id, account_created.isoformat(), join_ts.isoformat(), initial_risk)
-        )
+            (user_id, account_created.isoformat(), join_ts.isoformat(), initial_risk))
         await self.conn.commit()
 
-        return UserProfile(
-            user_id=user_id,
-            account_created=account_created,
-            join_timestamp=join_ts,
-            current_risk=initial_risk
-        )
+        return UserProfile(user_id=user_id, account_created=account_created, join_timestamp=join_ts,
+                           current_risk=initial_risk)
 
     @staticmethod
     def _calculate_initial_risk(account_created: datetime, join_timestamp: datetime) -> int:
@@ -220,63 +189,45 @@ class Database:
         return base_risk
 
     async def update_risk(self, user_id: int, delta: int) -> int:
-        cursor = await self.conn.execute(
-            "SELECT current_risk FROM profiles WHERE user_id = ?",
-            (user_id,)
-        )
+        cursor = await self.conn.execute("SELECT current_risk FROM profiles WHERE user_id = ?", (user_id,))
         row = await cursor.fetchone()
 
         if not row:
             return 0
 
         new_risk = max(0, min(RISK_CONFIG["max_risk"], row[0] + delta))
-        await self.conn.execute(
-            "UPDATE profiles SET current_risk = ? WHERE user_id = ?",
-            (new_risk, user_id)
-        )
+        await self.conn.execute("UPDATE profiles SET current_risk = ? WHERE user_id = ?", (new_risk, user_id))
         await self.conn.commit()
 
         return new_risk
 
     async def add_event(self, user_id: int, event_type: str, data: Optional[str] = None):
         now = datetime.utcnow().isoformat()
-        await self.conn.execute(
-            "INSERT INTO events (user_id, event_type, timestamp, data) VALUES (?, ?, ?, ?)",
-            (user_id, event_type, now, data)
-        )
+        await self.conn.execute("INSERT INTO events (user_id, event_type, timestamp, data) VALUES (?, ?, ?, ?)",
+                                (user_id, event_type, now, data))
         await self.conn.commit()
 
     async def get_risk(self, user_id: int) -> Optional[int]:
         """Returns current risk, or None if no profile exists"""
-        cursor = await self.conn.execute(
-            "SELECT current_risk FROM profiles WHERE user_id = ?",
-            (user_id,)
-        )
+        cursor = await self.conn.execute("SELECT current_risk FROM profiles WHERE user_id = ?", (user_id,))
         row = await cursor.fetchone()
         return row[0] if row else None
 
     async def ensure_profile_zero_risk(self, user_id: int, account_created: datetime):
         """Create a profile with risk 0 if missing (fallback for users without a join event)"""
-        cursor = await self.conn.execute(
-            "SELECT user_id FROM profiles WHERE user_id = ?",
-            (user_id,)
-        )
+        cursor = await self.conn.execute("SELECT user_id FROM profiles WHERE user_id = ?", (user_id,))
         if await cursor.fetchone():
             return
 
         await self.conn.execute(
             "INSERT INTO profiles (user_id, account_created, join_timestamp, current_risk) VALUES (?, ?, ?, ?)",
-            (user_id, account_created.isoformat(), datetime.utcnow().isoformat(), 0)
-        )
+            (user_id, account_created.isoformat(), datetime.utcnow().isoformat(), 0))
         await self.conn.commit()
         log.info(f"Created fallback zero-risk profile for user {user_id}")
 
     async def set_risk(self, user_id: int, value: int) -> int:
         clamped = max(0, min(value, RISK_CONFIG["max_risk"]))
-        await self.conn.execute(
-            "UPDATE profiles SET current_risk = ? WHERE user_id = ?",
-            (clamped, user_id)
-        )
+        await self.conn.execute("UPDATE profiles SET current_risk = ? WHERE user_id = ?", (clamped, user_id))
         await self.conn.commit()
         return clamped
 
@@ -306,17 +257,15 @@ async def on_member_join(member: discord.Member):
     if member.bot:
         return
 
-    profile = await db.get_or_create_profile(
-        member.id,
-        account_created=member.created_at,
-        join_timestamp=datetime.utcnow()
-    )
+    profile = await db.get_or_create_profile(member.id, account_created=member.created_at,
+                                             join_timestamp=datetime.utcnow())
 
     reason = "new_account_penalty" if profile.is_new_account else "new_member_base"
     await db.add_event(member.id, "member_join", f"Risk: {profile.current_risk} ({reason})")
     log.info(f"Member joined: {member} (id: {member.id}) -> risk {profile.current_risk} [{reason}]")
 
 
+# NEW MESSAGE ____________
 @bot.event
 async def on_message(message: discord.Message):
     if message.author.bot:
@@ -352,9 +301,53 @@ async def on_message(message: discord.Message):
     if message.attachments:
         await _handle_image_check(message)
 
+    if message.embeds:
+        await _handle_generic_message_removal(message)
+
     await bot.process_commands(message)
 
 
+# EDITED MESSAGE ____________
+@bot.event
+async def on_message_edit(before, after):
+    if after.author.bot:
+        return
+
+    # Don't run moderation on commands
+    if after.content.startswith(bot.command_prefix):
+        await bot.process_commands(after)
+        return
+
+    user_risk = await db.get_risk(after.author.id)
+
+    if user_risk is None:
+        await db.ensure_profile_zero_risk(after.author.id, after.author.created_at)
+        user_risk = 0
+        log.info(f"No profile found for {after.author} (id: {after.author.id}) -> set risk to 0")
+
+    if user_risk <= 0:
+        await bot.process_commands(after)
+        return
+
+    log.info(f"Checking message from {after.author} (id: {after.author.id}), current risk: {user_risk}")
+
+    # CRITICAL RISK - AUTO DELETE, skip other checks
+    if user_risk >= RISK_CONFIG["image_check_max_risk"]:
+        await _handle_critical_risk(after)
+        await bot.process_commands(after)
+        return
+
+    if after.content:
+        await _handle_text_check(after)
+
+    if after.attachments:
+        await _handle_image_check(after)
+
+    if after.embeds:
+        await _handle_generic_message_removal(after)
+
+
+# FUNCTIONS ____________
 async def _handle_text_check(message: discord.Message):
     score = await groq.check_text(message.content)
 
@@ -369,9 +362,7 @@ async def _handle_text_check(message: discord.Message):
         log.info(f"Removed text from {message.author} (coherence {score}) -> risk {new_risk}")
 
         warn_msg = await message.channel.send(
-            f"⚠️ {message.author.mention} - Message removed (incoherent). "
-            f"Risk level: **{new_risk}/{RISK_CONFIG['max_risk']}**"
-        )
+            f"{message.author.mention} - You have awakened the spam filter. You will not enjoy this.")
         await asyncio.sleep(8)
         await warn_msg.delete()
     else:
@@ -398,9 +389,7 @@ async def _handle_image_check(message: discord.Message):
             log.info(f"Removed image from {message.author} (coherence {score}) -> risk {new_risk}")
 
             warn_msg = await message.channel.send(
-                f"⚠️ {message.author.mention} - Image removed (incoherent). "
-                f"Risk level: **{new_risk}/{RISK_CONFIG['max_risk']}**"
-            )
+                f"{message.author.mention} - Thank you for your spam! Your wait time is approximately *forever*.")
             await asyncio.sleep(8)
             await warn_msg.delete()
             break
@@ -408,12 +397,20 @@ async def _handle_image_check(message: discord.Message):
 
 async def _handle_critical_risk(message: discord.Message):
     await message.delete()
-    warn_msg = await message.channel.send(
-        f"⚠️ {message.author.mention} - Message removed (risk level too high). "
-        f"Please contact support."
-    )
+    warn_msg = await message.channel.send(f"⚠️ {message.author.mention} - Message removed. "
+                                          f"Please contact support and request to be whitelisted.")
     await db.add_event(message.author.id, "critical_risk_deletion", "Auto-deleted due to critical risk")
     log.info(f"Critical risk deletion for {message.author} (id: {message.author.id})")
+    await asyncio.sleep(8)
+    await warn_msg.delete()
+
+
+async def _handle_generic_message_removal(message: discord.Message):
+    await message.delete()
+    warn_msg = await message.channel.send(
+        f"⚠️ {message.author.mention} Embed Removed - We don't know you that well, try talking around for a while!")
+    await db.add_event(message.author.id, "critical_risk_deletion", "Auto-deleted due to critical risk")
+    log.info(f"Embed deletion for {message.author} (id: {message.author.id})")
     await asyncio.sleep(8)
     await warn_msg.delete()
 
@@ -425,13 +422,15 @@ async def help_cmd(ctx):
     embed = discord.Embed(title="🤖 Bot Commands", color=discord.Color.blurple())
     embed.add_field(name=".help", value="Show this message", inline=False)
     embed.add_field(name=".ping", value="Check bot latency", inline=False)
-    embed.add_field(name=".whitelist @user", value="Mark a user as trusted, stops moderation checks (mod only)", inline=False)
+    embed.add_field(name=".whitelist @user", value="Mark a user as trusted, stops moderation checks (mod only)",
+                    inline=False)
 
     if is_dev(ctx.author.id):
         embed.add_field(name="── Dev Commands ──", value="\u200b", inline=False)
         embed.add_field(name=".getrisk [@user]", value="View a user's current risk score", inline=False)
         embed.add_field(name=".setrisk @user <amount>", value="Manually set a user's risk", inline=False)
-        embed.add_field(name=".addrisk @user <points>", value="Add/subtract risk points (can be negative)", inline=False)
+        embed.add_field(name=".addrisk @user <points>", value="Add/subtract risk points (can be negative)",
+                        inline=False)
 
     await ctx.send(embed=embed)
 
@@ -458,6 +457,7 @@ def dev_only():
         if not is_dev(ctx.author.id):
             return False
         return True
+
     return commands.check(predicate)
 
 

@@ -10,6 +10,8 @@ Things that you should not block: (Examples)
 - nah
 - Genuine questions about the server, game, or topic
 - Harmless Stray URLs
+- Genuine DM requests that do nto advertise, promote, or offer job opportunities or scams.
+- dm me
 
 You will be given input, return a coherence score from 1-10 in the form {"coherence":9} (9 for example, may differ). Return JUST the final end result.
 
